@@ -27,7 +27,7 @@ jobs:
       - name: Componenti SDK
         run: yes | sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null || true
 
-      - name: Compila APK debug (firmato con keystore debug: installabile)
+      - name: "Compila APK debug (firmato keystore debug, installabile)"
         run: gradle :app:assembleDebug --no-daemon
 
       - name: Rinomina artefatto
