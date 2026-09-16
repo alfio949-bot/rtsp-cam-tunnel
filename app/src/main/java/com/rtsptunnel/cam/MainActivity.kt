@@ -1,8 +1,8 @@
 package com.rtsptunnel.cam
 
-import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
@@ -19,6 +19,7 @@ import com.rtsptunnel.cam.net.TunnelSocketFactory
 import com.rtsptunnel.cam.player.CameraPlayer
 import com.rtsptunnel.cam.rtsp.ProbeResult
 import com.rtsptunnel.cam.rtsp.RtspProbe
+import com.rtsptunnel.cam.storage.CameraStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,13 +33,21 @@ class MainActivity : AppCompatActivity(), CameraPlayer.Callbacks {
     private lateinit var etProxy: EditText
     private lateinit var cbRequireProxy: CheckBox
     private lateinit var btnConnect: Button
+    private lateinit var btnSave: Button
     private lateinit var tvStatus: TextView
+    private lateinit var tvSavedTitle: TextView
+    private lateinit var llSavedList: LinearLayout
 
     private lateinit var cameraPlayer: CameraPlayer
+    private lateinit var cameraStore: CameraStore
 
     /** Tunnel attivo per la sessione corrente: null = connessione diretta
      *  (consentita solo se l'utente disattiva la modalità privacy). */
     private var tunnelFactory: SocketFactory? = null
+
+    /** Ultime credenziali usate/inserite (non persistite salvo salvataggio esplicito). */
+    private var lastUser: String? = null
+    private var lastPass: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,17 +58,26 @@ class MainActivity : AppCompatActivity(), CameraPlayer.Callbacks {
         etProxy = findViewById(R.id.etProxy)
         cbRequireProxy = findViewById(R.id.cbRequireProxy)
         btnConnect = findViewById(R.id.btnConnect)
+        btnSave = findViewById(R.id.btnSave)
         tvStatus = findViewById(R.id.tvStatus)
+        tvSavedTitle = findViewById(R.id.tvSavedTitle)
+        llSavedList = findViewById(R.id.llSavedList)
 
         cameraPlayer = CameraPlayer(this, playerView)
+        cameraStore = CameraStore(this)
 
         btnConnect.setOnClickListener { attemptConnection() }
+        btnSave.setOnClickListener { promptSaveCamera() }
+
+        renderSavedCameras()
     }
 
     // ------------------------------------------------------------------
-    // 1) Rilevamento e tentativo automatico (accesso anonimo)
+    // 1) Rilevamento e tentativo automatico (accesso anonimo).
+    //    withCreds = true salta il probe e connette direttamente con le
+    //    credenziali memorizzate (telecamera salvata con credenziali).
     // ------------------------------------------------------------------
-    private fun attemptConnection() {
+    private fun attemptConnection(withCreds: Boolean = false) {
         val raw = etUrl.text.toString().trim()
         if (raw.isEmpty()) {
             setStatus("Inserisci l'indirizzo della telecamera (es. 192.168.1.100)")
@@ -88,10 +106,19 @@ class MainActivity : AppCompatActivity(), CameraPlayer.Callbacks {
         }
         tunnelFactory = tunnel?.let { TunnelSocketFactory(it) }
 
-        setStatus("Tentativo anonimo verso ${uri.host}…" +
-                if (tunnel != null) " (via tunnel, il tuo IP è nascosto)" else " (diretta: IP visibile!)")
-
         lifecycleScope.launch(Dispatchers.IO) {
+            if (withCreds && (lastUser != null || lastPass != null)) {
+                // connessione autenticata diretta (telecamera salvata)
+                withContext(Dispatchers.Main) {
+                    setStatus("Connessione con credenziali salvate verso ${uri.host}…")
+                    play(buildRtspUrl(uri, lastUser, lastPass))
+                }
+                return@launch
+            }
+
+            setStatus("Tentativo anonimo verso ${uri.host}…" +
+                    if (tunnel != null) " (via tunnel, il tuo IP è nascosto)" else " (diretta: IP visibile!)")
+
             val result = RtspProbe(tunnelFactory).probeAnonymous(uri)
             withContext(Dispatchers.Main) {
                 when (result) {
@@ -120,10 +147,14 @@ class MainActivity : AppCompatActivity(), CameraPlayer.Callbacks {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad / 2, pad, 0)
         }
-        val etUser = EditText(this).apply { hint = "Username" }
+        val etUser = EditText(this).apply {
+            hint = "Username"
+            setText(lastUser ?: "")
+        }
         val etPass = EditText(this).apply {
             hint = "Password"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(lastPass ?: "")
         }
         container.addView(etUser)
         container.addView(etPass)
@@ -134,7 +165,9 @@ class MainActivity : AppCompatActivity(), CameraPlayer.Callbacks {
             .setView(container)
             .setPositiveButton("Connetti") { _, _ ->
                 // 4) Connessione autenticata: URL rigenerato con le credenziali
-                play(buildRtspUrl(uri, etUser.text.toString(), etPass.text.toString()))
+                lastUser = etUser.text.toString()
+                lastPass = etPass.text.toString()
+                play(buildRtspUrl(uri, lastUser, lastPass))
             }
             .setNegativeButton("Annulla", null)
             .show()
@@ -157,12 +190,106 @@ class MainActivity : AppCompatActivity(), CameraPlayer.Callbacks {
     }
 
     override fun onAuthError() {
-        setStatus("Credenziali errate o mancanti (401). Riprova: riapri il login con «Connetti».")
+        setStatus("Credenziali errate o mancanti (401). Riprova con «Connetti».")
         Toast.makeText(this, "Credenziali rifiutate dalla telecamera", Toast.LENGTH_LONG).show()
     }
 
     override fun onGenericError(message: String?) {
         setStatus("Errore di riproduzione: ${message ?: "sconosciuto"}")
+    }
+
+    // ------------------------------------------------------------------
+    // Telecamere salvate (persistenza locale, nessun cloud)
+    // ------------------------------------------------------------------
+    private fun promptSaveCamera() {
+        val raw = etUrl.text.toString().trim()
+        if (raw.isEmpty()) {
+            setStatus("Inserisci prima l'indirizzo della telecamera")
+            return
+        }
+        val uri = normalizeRtsp(raw) ?: run {
+            setStatus("Indirizzo non valido, impossibile salvare")
+            return
+        }
+        val hasCreds = lastUser != null || lastPass != null
+
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        val etName = EditText(this).apply {
+            hint = "Nome (es. Ingresso)"
+            setText(uri.host)
+        }
+        val cbCreds = CheckBox(this).apply {
+            text = "Salva anche le credenziali (in chiaro sul telefono)"
+            isEnabled = hasCreds
+            if (!hasCreds) alpha = 0.5f
+        }
+        container.addView(etName)
+        container.addView(cbCreds)
+
+        AlertDialog.Builder(this)
+            .setTitle("Salva telecamera")
+            .setView(container)
+            .setPositiveButton("Salva") { _, _ ->
+                val name = etName.text.toString().trim().ifEmpty { uri.host ?: "Camera" }
+                cameraStore.save(
+                    name, raw, etProxy.text.toString().trim(),
+                    if (cbCreds.isChecked) lastUser else null,
+                    if (cbCreds.isChecked) lastPass else null
+                )
+                renderSavedCameras()
+                setStatus("Telecamera «$name» salvata")
+            }
+            .setNegativeButton("Annulla", null)
+            .show()
+    }
+
+    private fun renderSavedCameras() {
+        llSavedList.removeAllViews()
+        val cams = cameraStore.list()
+        tvSavedTitle.visibility = if (cams.isEmpty()) View.GONE else View.VISIBLE
+
+        for (c in cams) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 8, 0, 8)
+            }
+
+            val label = TextView(this).apply {
+                text = "${c.name}\n${c.url}" +
+                        (if (!c.user.isNullOrEmpty()) "  •  🔑" else "")
+                setTextAppearance(androidx.appcompat.R.style.TextAppearance_AppCompat_Medium)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                setOnClickListener {
+                    etUrl.setText(c.url)
+                    etProxy.setText(c.proxy)
+                    if (!c.user.isNullOrEmpty() || !c.pass.isNullOrEmpty()) {
+                        lastUser = c.user
+                        lastPass = c.pass
+                        attemptConnection(withCreds = true)
+                    } else {
+                        lastUser = null; lastPass = null
+                        attemptConnection()
+                    }
+                }
+            }
+
+            val btnDelete = Button(this).apply {
+                text = "✕"
+                setOnClickListener {
+                    cameraStore.delete(c.id)
+                    renderSavedCameras()
+                }
+            }
+
+            row.addView(label)
+            row.addView(btnDelete)
+            llSavedList.addView(row)
+        }
     }
 
     // ------------------------- utilità -------------------------------
@@ -205,7 +332,7 @@ class MainActivity : AppCompatActivity(), CameraPlayer.Callbacks {
 
     override fun onStop() {
         super.onStop()
-        cameraPlayer.release()   // risparmio batteria/retim quando in background
+        cameraPlayer.release()   // risparmio batteria/rete quando in background
     }
 
     override fun onDestroy() {

@@ -51,11 +51,26 @@
                 android:text="@string/require_proxy_label"
                 android:layout_marginBottom="12dp" />
 
-            <Button
-                android:id="@+id/btnConnect"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/connect" />
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnConnect"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/connect" />
+
+                <Button
+                    android:id="@+id/btnSave"
+                    style="?attr/buttonBarButtonStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/save" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tvStatus"
@@ -64,6 +79,21 @@
                 android:layout_marginTop="12dp"
                 android:text="@string/status_idle"
                 android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+            <TextView
+                android:id="@+id/tvSavedTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:visibility="gone"
+                android:text="@string/saved_title"
+                android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+            <LinearLayout
+                android:id="@+id/llSavedList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

@@ -4,5 +4,7 @@
     <string name="proxy_hint">socks5://host:port (o http://host:port)</string>
     <string name="require_proxy_label">Modalità privacy obbligatoria: rifiuta connessioni dirette</string>
     <string name="connect">Connetti</string>
+    <string name="save">Salva</string>
+    <string name="saved_title">Telecamere salvate (tocca per connetterti):</string>
     <string name="status_idle">In attesa: inserisci l\'indirizzo della telecamera.</string>
 </resources>
