@@ -89,16 +89,17 @@ class RtspProbe(private val socketFactory: SocketFactory?) {
         }
     }
 
-    /** Socket dal tunnel (se attivo) o diretto (se consentito dall'utente). */
+    /**
+     * Socket dal tunnel (se attivo) o diretto (se consentito dall'utente).
+     * La variante createSocket(host, port) di javax.net ritorna un socket
+     * GIÀ CONNESSO — media3 usa la stessa identica chiamata.
+     */
     private fun openSocket(host: String, port: Int): Socket {
         val factory = socketFactory ?: SocketFactory.getDefault()
-        val socket = factory.createSocket()
-        val endpoint = if (socketFactory is TunnelSocketFactory)
-        // non risolvere localmente: decide il proxy
-            InetSocketAddress.createUnresolved(host, port)
+        val socket = if (factory is TunnelSocketFactory)
+            factory.createSocket(host, port)   // tunnel: DNS risolto dal proxy
         else
-            InetSocketAddress(host, port)
-        socket.connect(endpoint, TunnelSocketFactory.CONNECT_TIMEOUT_MS)
+            factory.createSocket(host, port)   // connessione diretta (se consentita)
         socket.soTimeout = 6_000
         return socket
     }

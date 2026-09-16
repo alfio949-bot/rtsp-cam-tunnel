@@ -67,7 +67,9 @@ object TunnelParser {
  */
 class TunnelSocketFactory(private val tunnel: Tunnel) : SocketFactory() {
 
-    override fun createSocket(): Socket = when (tunnel) {
+    /** Helper interno: NON fa override (su Android la classe base non ha
+     *  il createSocket() senza argomenti) ma è usato da RtspProbe. */
+    fun createTunnelSocket(): Socket = when (tunnel) {
         is Tunnel.Socks5 ->
             // java.net.Socket con proxy SOCKS: handshake SOCKS5 gestito dalla JVM.
             Socket(Proxy(Proxy.Type.SOCKS, InetSocketAddress(tunnel.host, tunnel.port)))
@@ -83,8 +85,8 @@ class TunnelSocketFactory(private val tunnel: Tunnel) : SocketFactory() {
             it.connect(InetSocketAddress.createUnresolved(host, port), CONNECT_TIMEOUT_MS)
         }
 
-    // Variante legacy javax.net: usata da alcune librerie — inoltra alla versione tunnel.
-    override fun createSocket(host: String, port: Int, localHost: String, localPort: Int): Socket =
+    // Variante javax.net: ritorna un socket tunnel già connesso.
+    override fun createSocket(host: String, port: Int, localHost: java.net.InetAddress, localPort: Int): Socket =
         createSocket(host, port)
 
     override fun createSocket(host: java.net.InetAddress, port: Int): Socket =
