@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- RTSP è un protocollo in chiaro (non HTTP): permettiamo il traffico
+     non cifrato verso le telecamere; il tunnel proxy rimane deciso a runtime. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

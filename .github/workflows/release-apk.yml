@@ -1,0 +1,58 @@
+name: release-apk
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag di release (es. v1.0.0)"
+        required: true
+        default: v1.0.0
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.9" }
+
+      - name: Componenti SDK
+        run: yes | sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null || true
+
+      - name: Compila APK debug (firmato con keystore debug: installabile)
+        run: gradle :app:assembleDebug --no-daemon
+
+      - name: Rinomina artefatto
+        run: cp app/build/outputs/apk/debug/app-debug.apk "RTSPCamTunnel-${{ inputs.tag || github.ref_name }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rtspcam-apk
+          path: RTSPCamTunnel-*.apk
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts, merge-multiple: true }
+      - name: Pubblica release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          gh release create "$TAG" artifacts/*.apk \
+            --title "RTSP Cam Tunnel $TAG" \
+            --notes "Visualizzatore RTSP con accesso condizionale (anonimo -> login su 401) e tunneling proxy SOCKS5/HTTP per mascherare l'IP del dispositivo.
+
+          APK firmato con keystore di debug (firmato, installabile). Per la distribuzione al pubblico rifirmare con chiave di release." \
+            || gh release upload "$TAG" artifacts/*.apk --clobber

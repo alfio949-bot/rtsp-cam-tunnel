@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">RTSP Cam Tunnel</string>
+    <string name="url_hint">rtsp://192.168.1.100:554/ (o solo l\'IP)</string>
+    <string name="proxy_hint">socks5://host:port (o http://host:port)</string>
+    <string name="require_proxy_label">Modalità privacy obbligatoria: rifiuta connessioni dirette</string>
+    <string name="connect">Connetti</string>
+    <string name="status_idle">In attesa: inserisci l\'indirizzo della telecamera.</string>
+</resources>
